@@ -1,0 +1,13 @@
+# Create an empty public repository named GoodsFinder on GitHub first.
+
+cd "C:\Users\Enrico\OneDrive\Documents\anno117mods"
+mkdir GoodsFinder
+cd GoodsFinder
+
+# Copy the contents of this publication kit's GoodsFinder folder here, then:
+git init
+git add .
+git commit -m "Release Goods Finder v1.0.0"
+git branch -M main
+git remote add origin https://github.com/SirLocksley13/GoodsFinder.git
+git push -u origin main

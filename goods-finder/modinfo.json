@@ -1,0 +1,36 @@
+{
+  "ModID": "goods-finder-province-stock-map",
+  "Version": "1.0.0",
+  "Anno": 8,
+  "Difficulty": "unchanged",
+  "ModName": {
+    "English": "Goods Finder"
+  },
+  "Category": {
+    "English": "Utility"
+  },
+  "Description": {
+    "English": "Press Ctrl+Alt+G while hovering a warehouse product to open the vanilla goods list, focus that product, and compare its stock across all owned islands in the current province. Goods Finder uses only an originally-empty trade-route cargo row and removes temporary product selections before closing, protecting existing cargo instructions."
+  },
+  "CreatorName": "Dr. Enrico Handrick",
+  "CreatorContact": "https://github.com/SirLocksley13",
+  "GameSetup": {
+    "RequiresNewGame": false,
+    "SafeToRemove": true
+  },
+  "Dependencies": {
+    "Require": [],
+    "Optional": [],
+    "LoadAfter": [],
+    "Deprecate": [],
+    "Incompatible": []
+  },
+  "Scripts": {
+    "Modules": [
+      "goodsfinder/goods-finder.lua"
+    ],
+    "Init": "GoodsFinder = require(\"goods-finder\")",
+    "Load": "GoodsFinder:Load()",
+    "Tick": "GoodsFinder:Tick()"
+  }
+}

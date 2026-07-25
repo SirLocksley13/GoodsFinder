@@ -1,0 +1,5 @@
+<ModOps>
+  <ModOp Type="add" GUID="2001271" Path="/Values/ShortcutConfig/InputBindings">
+    <Item><Command>GoodsFinder:CaptureOpenAndCreateRoute()</Command><Active>Session</Active><Identifier>GoodsFinderProvinceStockMap</Identifier><AvailableOnPlatforms>PC</AvailableOnPlatforms><InputTypes><Modern><KeyType>Control;Alt;G</KeyType></Modern><Legacy><KeyType>Control;Alt;G</KeyType></Legacy></InputTypes></Item>
+  </ModOp>
+</ModOps>
