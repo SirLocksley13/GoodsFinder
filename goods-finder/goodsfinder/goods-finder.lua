@@ -1,6 +1,6 @@
 local GoodsFinder = {}
 
-local LOG_PREFIX = "[Goods Finder 1.0.0]"
+local LOG_PREFIX = "[Goods Finder 1.1.0]"
 local PUBLIC_DIAGNOSTICS = false
 
 local function log(message)
@@ -40,7 +40,7 @@ local function captureHoveredProduct()
     end
     local product = getProduct(refGuid)
     if product == nil then
-        log("no valid product detected | keep the mouse over a warehouse good")
+        log("no valid product detected | warehouse mode may continue without preselection")
         return nil
     end
     log("product detected | productGUID=" .. tostring(product.guid)
@@ -194,12 +194,47 @@ function GoodsFinder:Load()
     self.failureCleanupReason = nil
     self.failureCleanupMode = nil
 
-    log("Lua loaded | Goods Finder ready | Ctrl+Alt+G opens province-wide stock from a warehouse using a protected empty trade-route row")
+    log("Lua loaded | Goods Finder ready | Ctrl+Alt+G | anywhere start | optional hovered-good preselection | automatic Latium/Albion popup reopen")
 end
 
-local function captureAndLogStock()
+local function captureAndLogStock(allowMissingProduct)
     local product = captureHoveredProduct()
-    if product == nil then return nil end
+    if product == nil then
+        if allowMissingProduct == true then
+            -- Warehouse-only mode still needs the owned-area list because the
+            -- route helper uses lastStockRecords to recognize current-province
+            -- station names. Do not read product stock when no product exists.
+            local records = collectOwnedAreas()
+
+            GoodsFinder.lastProductGuid = 0
+            GoodsFinder.lastProductName = ""
+            GoodsFinder.lastSessionGuid = tonumber(
+                safe(function()
+                    return GameSession and GameSession.SessionGUID
+                end)
+            ) or 0
+            GoodsFinder.lastIslandCount = #records
+            GoodsFinder.lastStockRecords = {}
+
+            for _, record in ipairs(records) do
+                GoodsFinder.lastStockRecords[#GoodsFinder.lastStockRecords + 1] = {
+                    areaId = record.areaId,
+                    areaName = record.areaName,
+                    amount = 0,
+                    capacity = 0
+                }
+            end
+
+            log("WAREHOUSEMODE PRODUCT"
+                .. " | preselection=false"
+                .. " | reason=no hovered product"
+                .. " | behavior=open full goods list"
+                .. " | provinceAreaCount=" .. tostring(#records)
+                .. " | provinceFilterPreserved=true"
+                .. " | productStockReads=false")
+        end
+        return nil
+    end
     local records = collectOwnedAreas()
     log("owned island areas collected | count=" .. tostring(#records))
     for index, record in ipairs(records) do
@@ -3675,6 +3710,19 @@ function GoodsFinder:ForceRememberedGoodHover()
         .. " | isSelectedBefore=" .. tostring(selectedBefore)
         .. " | itemValue=" .. bindingSafeToString(targetItem))
 
+    -- Read-only probe. Do not change Interaction state in this build.
+    local interaction, interactionErr = safe(function()
+        return targetItem and targetItem.Interaction
+    end)
+    local interactionEnabled, interactionEnabledErr = safe(function()
+        return interaction and interaction.IsEnabled
+    end)
+    local interactionStates, interactionStatesErr = safe(function()
+        return interaction and interaction.States
+    end)
+
+
+
     local focusResult, focusErr = safe(function()
         popup.FocusedIndex = targetArrayIndex
         return popup.FocusedIndex
@@ -4526,10 +4574,16 @@ function GoodsFinder:OpenRememberedLoadGoodsPopup()
         .. " | rememberedIslandName=" .. expectedIslandName
         .. " | rememberedAreaID=" .. tostring(self.lastWarehouseAreaId))
 
-    if expectedGuid <= 0 then
-        log("DIRECTLOAD ABORT | no remembered product; first use Ctrl+Alt+G over a warehouse good")
-        return finish(false)
-    end
+    log("DIRECTLOAD PRESELECTION"
+        .. " | enabled=" .. tostring(expectedGuid > 0)
+        .. " | productGUID=" .. tostring(expectedGuid)
+        .. " | productName=" .. tostring(expectedName)
+        .. " | behavior="
+            .. tostring(
+                expectedGuid > 0
+                    and "auto-focus remembered product"
+                    or "open full goods list without preselection"
+            ))
 
     local scene = safe(function()
         return ui and ui.Scenes and ui.Scenes.TradeRoute
@@ -4923,10 +4977,33 @@ function GoodsFinder:OpenRememberedLoadGoodsPopup()
         self.autoGoodsHoverTickCounter = 0
         self.autoGoodsHoverLogged = false
 
-        log("DIRECTLOAD popup opened immediately | apply proven remembered-product hover")
-        local overlayResult = self:ForceRememberedGoodHover()
-        log("DIRECTLOAD overlay result | success=" .. tostring(overlayResult))
-        return finish(overlayResult)
+        if expectedGuid > 0 then
+            log("DIRECTLOAD popup opened immediately | apply remembered-product preselection")
+            local overlayResult = self:ForceRememberedGoodHover()
+            log("DIRECTLOAD overlay result | success=" .. tostring(overlayResult))
+            return finish(overlayResult)
+        end
+
+        log("WAREHOUSEMODE POPUP READY"
+            .. " | preselection=false"
+            .. " | popupVisible=true"
+            .. " | behavior=user may hover any product; warehouse is not required")
+
+        self.autoReturnPending = true
+        self.autoReturnSawPopup = true
+        self.autoReturnTickCounter = 0
+        self.autoReturnCloseTickCounter = 0
+        self.autoReturnLogged = false
+        self.nativeCloseBaselineSignature =
+            nativeCloseHelperRowsSnapshot(self, "baseline")
+        self.nativeClosePrecloseSignature = nil
+
+        log("AUTORETURN MONITOR START"
+            .. " | popupVisible=true"
+            .. " | routeValid=true"
+            .. " | behavior=warehouse-only mode; one Escape closes popup, then tracked empty row cleanup and native Trade Route close")
+
+        return finish(true)
     end
 
     if dispatchErr == nil then
@@ -4942,7 +5019,7 @@ function GoodsFinder:OpenRememberedLoadGoodsPopup()
         .. " | AddGoodDispatched=" .. tostring(dispatchErr == nil)
         .. " | popupVisibleAfter=" .. tostring(popupVisibleAfter)
         .. " | delayedHoverPending=" .. tostring(self.autoGoodsHoverPending == true)
-        .. " | next=Tick will wait for the popup and apply the remembered-product stock overlay automatically")
+        .. " | next=Tick waits for popup; remembered product is preselected only when available")
 
     return finish(dispatchErr == nil)
 end
@@ -6165,6 +6242,9 @@ local function existingRouteFindUsableProvinceStation(goodsFinder)
     local provinceNames = existingRouteCurrentProvinceNames(goodsFinder)
     local sawProvinceStation = false
     local bestError = nil
+    local fallbackRowCount = nil
+    local fallbackIndex = nil
+    local fallbackName = nil
 
     for index = 0, (tonumber(stationCount) or 0) - 1 do
         local station = safe(function()
@@ -6173,11 +6253,35 @@ local function existingRouteFindUsableProvinceStation(goodsFinder)
         local islandName = tostring(safe(function()
             return station and station.IslandName
         end) or "")
-        local inCurrentProvince =
-            provinceNames[string.lower(islandName)] == true
+        local stationProvinceIcon = tostring(safe(function()
+            return station and station.StationProvinceIcon
+        end) or "")
+        local targetProvinceIcon =
+            tostring(goodsFinder.crossProvinceTargetStationIcon or "")
+        local inCurrentProvince = false
+
+        if targetProvinceIcon ~= "" then
+            inCurrentProvince =
+                stationProvinceIcon == targetProvinceIcon
+        else
+            inCurrentProvince =
+                provinceNames[string.lower(islandName)] == true
+        end
 
         if inCurrentProvince then
             sawProvinceStation = true
+
+            local stationHasWarning = safe(function()
+                return station and station.StationHasWarning
+            end)
+            local waitForGoodsActive = safe(function()
+                local data = station and station.WaitForGoodsButtonData
+                return data and data.IsActive
+            end)
+            local waitToUnloadActive = safe(function()
+                local data = station and station.WaitToUnloadButtonData
+                return data and data.IsActive
+            end)
 
             safe(function()
                 selection.GoodsIslandFocusIndex = index
@@ -6198,6 +6302,7 @@ local function existingRouteFindUsableProvinceStation(goodsFinder)
                 bestError = rowCountErr
             elseif (tonumber(rowCount) or 0) > 0 then
                 local emptyUsableRows = 0
+
                 for rowIndex = 0, (tonumber(rowCount) or 0) - 1 do
                     local row = safe(function()
                         return rowHelper.GetElement(rows, rowIndex)
@@ -6220,11 +6325,49 @@ local function existingRouteFindUsableProvinceStation(goodsFinder)
                 end
 
                 if emptyUsableRows > 0 then
-                    return tonumber(rowCount) or 0, index, islandName, nil
+                    local warningActive =
+                        stationHasWarning == true
+                        or waitForGoodsActive == true
+                        or waitToUnloadActive == true
+
+                    log("GENERICROUTE HELPER STATION CANDIDATE"
+                        .. " | arrayIndex=" .. tostring(index)
+                        .. " | islandName=" .. tostring(islandName)
+                        .. " | stationProvinceIcon=" .. tostring(stationProvinceIcon)
+                        .. " | targetProvinceIcon=" .. tostring(targetProvinceIcon)
+                        .. " | emptyUsableRows=" .. tostring(emptyUsableRows)
+                        .. " | stationHasWarning=" .. tostring(stationHasWarning)
+                        .. " | waitForGoodsActive=" .. tostring(waitForGoodsActive)
+                        .. " | waitToUnloadActive=" .. tostring(waitToUnloadActive)
+                        .. " | warningActive=" .. tostring(warningActive))
+
+                    if warningActive ~= true then
+                        log("GENERICROUTE HELPER STATION SELECT"
+                            .. " | mode=prefer-no-native-warning"
+                            .. " | arrayIndex=" .. tostring(index)
+                            .. " | islandName=" .. tostring(islandName))
+                        return tonumber(rowCount) or 0, index, islandName, nil
+                    end
+
+                    if fallbackIndex == nil then
+                        fallbackRowCount = tonumber(rowCount) or 0
+                        fallbackIndex = index
+                        fallbackName = islandName
+                    end
+                else
+                    bestError =
+                        "current-province station has no empty usable LoadGoods row"
                 end
-                bestError = "current-province station has no empty usable LoadGoods row"
             end
         end
+    end
+
+    if fallbackIndex ~= nil then
+        log("GENERICROUTE HELPER STATION SELECT"
+            .. " | mode=fallback-warning-station"
+            .. " | arrayIndex=" .. tostring(fallbackIndex)
+            .. " | islandName=" .. tostring(fallbackName))
+        return fallbackRowCount, fallbackIndex, fallbackName, nil
     end
 
     if sawProvinceStation ~= true then
@@ -6366,12 +6509,26 @@ local function existingRouteStationSnapshot(goodsFinder)
             end)
         end
 
+        local stationProvinceIcon = tostring(safe(function()
+            return station and station.StationProvinceIcon
+        end) or "")
+        local targetProvinceIcon =
+            tostring(goodsFinder.crossProvinceTargetStationIcon or "")
+        local inCurrentProvince = false
+        if targetProvinceIcon ~= "" then
+            inCurrentProvince =
+                stationProvinceIcon == targetProvinceIcon
+        else
+            inCurrentProvince =
+                provinceNames[string.lower(islandName)] == true
+        end
+
         rows[#rows + 1] = {
             index = index,
             islandName = islandName,
             stationId = stationId,
-            inCurrentProvince =
-                provinceNames[string.lower(islandName)] == true
+            stationProvinceIcon = stationProvinceIcon,
+            inCurrentProvince = inCurrentProvince
         }
     end
 
@@ -6664,6 +6821,10 @@ local function existingRouteScanTick(goodsFinder)
                 .. " | arrayIndex=" .. tostring(row.index)
                 .. " | islandName=" .. tostring(row.islandName)
                 .. " | stationID=" .. tostring(row.stationId)
+                .. " | stationProvinceIcon="
+                    .. tostring(row.stationProvinceIcon or "")
+                .. " | targetProvinceIcon="
+                    .. tostring(goodsFinder.crossProvinceTargetStationIcon or "")
                 .. " | inCurrentProvince="
                     .. tostring(row.inCurrentProvince))
         end
@@ -6797,7 +6958,7 @@ end
 
 function GoodsFinder:CaptureOpenAndCreateRoute()
     log("GENERICROUTE WORKFLOW START"
-        .. " | action=capture product and current warehouse, then inspect existing routes"
+        .. " | action=capture optional product/current area context, then inspect existing routes"
         .. " | noTemporaryRoute=true"
         .. " | noIslandClicks=true")
 
@@ -6810,6 +6971,7 @@ function GoodsFinder:CaptureOpenAndCreateRoute()
     self.autoReturnSawPopup = false
     self.autoReturnTickCounter = 0
     self.autoReturnCloseTickCounter = 0
+    self.autoReturnCloseGraceLogged = false
     self.autoReturnLogged = false
 
     self.nativeCloseVerifyPending = false
@@ -6838,20 +7000,70 @@ function GoodsFinder:CaptureOpenAndCreateRoute()
     self.existingRouteExactMatchSeen = false
     self.existingRouteHelperStationIndex = nil
     self.existingRouteHelperStationName = nil
+    self.crossProvinceTargetProvince = nil
+    self.crossProvinceTargetTab = nil
+    self.crossProvinceTargetStationIcon = nil
+    self.crossProvinceReferenceLabel = nil
+    self.crossProvinceManualHandoff = false
+    self.sameDoorwayReopenPending = false
+    self.sameDoorwayReopenTick = 0
+    self.sameDoorwayRouteID = nil
+    self.sameDoorwayRouteName = nil
+    self.sameDoorwayStationIndex = nil
+    self.sameDoorwayStationName = nil
+    self.crossProvincePopupProvince = nil
+    self.crossProvincePopupTab = nil
 
-    local product = captureAndLogStock()
-    if product == nil then
-        log("GENERICROUTE ABORT"
-            .. " | reason=no hovered warehouse product detected")
-        return false
-    end
+    -- v1.1 UX improvement:
+    -- The warehouse itself is now sufficient to open Goods Finder.
+    -- A hovered product is optional and acts only as an automatic preselection.
+    local warehouseScene = safe(function()
+        return ui and ui.Scenes and ui.Scenes.OMKontorWarehouse
+    end)
+    local warehouseSceneData = safe(function()
+        return warehouseScene and warehouseScene.SceneData
+    end)
+    local warehouseData = safe(function()
+        return warehouseSceneData and warehouseSceneData.NewOMKontorWarehouse
+    end)
+    local warehouseStorage = safe(function()
+        return warehouseData and warehouseData.Storage
+    end)
+
+    local hasWarehouseContext = warehouseStorage ~= nil
+
+    log("ANYWHERE CONTEXT"
+        .. " | sceneType=" .. tostring(type(warehouseScene))
+        .. " | sceneDataType=" .. tostring(type(warehouseSceneData))
+        .. " | warehouseDataType=" .. tostring(type(warehouseData))
+        .. " | storageType=" .. tostring(type(warehouseStorage))
+        .. " | warehouseContextAvailable=" .. tostring(hasWarehouseContext)
+        .. " | requirement=none"
+        .. " | behavior=Ctrl+Alt+G may open Goods Finder from normal gameplay; warehouse hover remains optional preselection context")
 
     local warehouse = captureWarehouseArea()
     if warehouse == nil then
-        log("GENERICROUTE ABORT"
-            .. " | reason=warehouse island could not be resolved")
-        return false
+        self.lastWarehouseAreaId = 0
+        self.lastWarehouseAreaName = ""
+        log("ANYWHERE AREA"
+            .. " | resolved=false"
+            .. " | behavior=continue using owned-area province list and generic helper-station scan")
+    else
+        log("ANYWHERE AREA"
+            .. " | resolved=true"
+            .. " | areaID=" .. tostring(warehouse.areaId or 0)
+            .. " | areaName=" .. tostring(warehouse.areaName or ""))
     end
+
+    local product = captureAndLogStock(true)
+    log("ANYWHERE START"
+        .. " | warehouseContextAvailable=" .. tostring(hasWarehouseContext)
+        .. " | preselection=" .. tostring(product ~= nil)
+        .. " | productGUID=" .. tostring(self.lastProductGuid or 0)
+        .. " | productName=" .. tostring(self.lastProductName or "")
+        .. " | contextAreaID=" .. tostring(self.lastWarehouseAreaId or 0)
+        .. " | contextAreaName=" .. tostring(self.lastWarehouseAreaName or "")
+        .. " | physicalSessionGUID=" .. tostring(self.lastSessionGuid or 0))
 
     local openResult, openErr = safe(function()
         Scripts:ToggleTraderouteMenu()
@@ -11485,6 +11697,59 @@ local function nativeCloseVerifyTick(goodsFinder)
     end
 end
 
+
+local CROSSPROVINCE_LATIUM_PROVINCE = 1589870007
+local CROSSPROVINCE_ALBION_PROVINCE = 1563518157
+local CROSSPROVINCE_LATIUM_ICON =
+    "data/ui/fhd/base/icon_content/generic/icon_2d_region_heartlands.png"
+local CROSSPROVINCE_ALBION_ICON =
+    "data/ui/fhd/base/icon_content/generic/icon_2d_region_wetlands.png"
+
+
+local function crossProvinceTargetForProvince(province)
+    province = tonumber(province) or 0
+    if province == CROSSPROVINCE_LATIUM_PROVINCE then
+        return CROSSPROVINCE_LATIUM_ICON, "Latium"
+    end
+    if province == CROSSPROVINCE_ALBION_PROVINCE then
+        return CROSSPROVINCE_ALBION_ICON, "Albion"
+    end
+    return nil, nil
+end
+
+
+local function crossProvinceReadMapState()
+    local macroData = safe(function()
+        return ui
+            and ui.Scenes
+            and ui.Scenes.MacroMap
+            and ui.Scenes.MacroMap.MacroMapData
+    end)
+    local province = tonumber(safe(function()
+        return macroData and macroData.Province
+    end)) or 0
+    local tab = tonumber(safe(function()
+        return macroData
+            and macroData.TabsData
+            and macroData.TabsData.SelectedTabID
+    end))
+    if tab == nil then tab = -1 end
+    return province, tab
+end
+
+
+local function crossProvinceResetDoorwayTracking(goodsFinder)
+    goodsFinder.directLoadSelectedRowIndex = nil
+    goodsFinder.directLoadSelectedRowWasEmpty = false
+    goodsFinder.trackedRowRemoveDone = false
+    goodsFinder.nativeCloseBaselineSignature = nil
+    goodsFinder.nativeClosePrecloseSignature = nil
+    goodsFinder.nativeClosePostremoveSignature = nil
+    goodsFinder.existingRouteHelperStationIndex = nil
+    goodsFinder.existingRouteHelperStationName = nil
+end
+
+
 local function autoReturnAfterPopupTick(goodsFinder)
     goodsFinder.autoReturnTickCounter =
         (tonumber(goodsFinder.autoReturnTickCounter) or 0) + 1
@@ -11507,25 +11772,105 @@ local function autoReturnAfterPopupTick(goodsFinder)
     end)
 
     if routeValid ~= true then
+        local cleanupAttempted = false
+        local cleanupResult = nil
+        local cleanupErr = nil
+        local restored = nil
+
+        -- Anno can invalidate UIEditRoute before the TradeRoute scene binding
+        -- disappears. Test 9 hit this on the final exit. Try the guarded
+        -- tracked-row cleanup once while the UI binding may still be alive.
+        if goodsFinder.autoReturnSawPopup == true
+            and goodsFinder.trackedRowRemoveDone ~= true
+            and goodsFinder.directLoadSelectedRowWasEmpty == true
+            and tonumber(goodsFinder.directLoadSelectedRowIndex) ~= nil
+        then
+            cleanupAttempted = true
+            goodsFinder.nativeClosePrecloseSignature =
+                nativeCloseHelperRowsSnapshot(
+                    goodsFinder,
+                    "external-close-precleanup"
+                )
+
+            cleanupResult, cleanupErr = safe(function()
+                return removeTrackedTemporaryLoadGood(
+                    goodsFinder
+                )
+            end)
+
+            goodsFinder.nativeClosePostremoveSignature =
+                nativeCloseHelperRowsSnapshot(
+                    goodsFinder,
+                    "external-close-postcleanup"
+                )
+
+            if goodsFinder.nativeCloseBaselineSignature ~= nil
+                and goodsFinder.nativeClosePostremoveSignature ~= nil
+            then
+                restored =
+                    goodsFinder.nativeCloseBaselineSignature
+                    == goodsFinder.nativeClosePostremoveSignature
+            end
+
+            log("AUTORETURN EXTERNAL CLOSE CLEANUP"
+                .. " | attempted=true"
+                .. " | callSuccess="
+                    .. tostring(cleanupErr == nil)
+                .. " | callResult="
+                    .. tostring(cleanupResult)
+                .. " | error="
+                    .. tostring(cleanupErr or "")
+                .. " | baselineEqualsPostremove="
+                    .. tostring(restored)
+                .. " | closeTradeRouteCalls=0"
+                .. " | popUICalls=0"
+                .. " | reason=UIEditRoute became invalid before normal popup-close cleanup")
+        end
+
         log("AUTORETURN CANCEL"
             .. " | reason=Trade Route editor already closed"
             .. " | tickCount=" .. tostring(tickCount)
-            .. " | popupVisible=" .. tostring(popupVisible))
+            .. " | popupVisible=" .. tostring(popupVisible)
+            .. " | cleanupAttempted="
+                .. tostring(cleanupAttempted)
+            .. " | cleanupSuccess="
+                .. tostring(cleanupAttempted == true
+                    and cleanupErr == nil)
+            .. " | noAdditionalClose=true")
 
         goodsFinder.autoReturnPending = false
         goodsFinder.autoReturnSawPopup = false
         goodsFinder.autoReturnTickCounter = 0
         goodsFinder.autoReturnCloseTickCounter = 0
+        goodsFinder.autoReturnCloseGraceLogged = false
         goodsFinder.autoReturnLogged = false
+        goodsFinder.sameDoorwayReopenPending = false
+        goodsFinder.sameDoorwayReopenTick = 0
         return
     end
 
     if popupVisible == true then
         goodsFinder.autoReturnSawPopup = true
         goodsFinder.autoReturnCloseTickCounter = 0
+        goodsFinder.autoReturnCloseGraceLogged = false
 
         if goodsFinder.autoReturnLogged ~= true then
             goodsFinder.autoReturnLogged = true
+            local macroProvince, macroTab =
+                crossProvinceReadMapState()
+            goodsFinder.crossProvincePopupProvince =
+                macroProvince
+            goodsFinder.crossProvincePopupTab =
+                macroTab
+
+            log("CROSSPROVINCE POPUP BASELINE"
+                .. " | province=" .. tostring(macroProvince)
+                .. " | tab=" .. tostring(macroTab)
+                .. " | routeID="
+                    .. tostring(goodsFinder.existingRouteCurrentId or "")
+                .. " | helperStation="
+                    .. tostring(goodsFinder.existingRouteHelperStationName or ""))
+
             log("AUTORETURN ARMED"
                 .. " | popupVisible=true"
                 .. " | routeValid=true"
@@ -11543,6 +11888,7 @@ local function autoReturnAfterPopupTick(goodsFinder)
             goodsFinder.autoReturnPending = false
             goodsFinder.autoReturnTickCounter = 0
             goodsFinder.autoReturnCloseTickCounter = 0
+            goodsFinder.autoReturnCloseGraceLogged = false
             goodsFinder.autoReturnLogged = false
         end
         return
@@ -11551,11 +11897,71 @@ local function autoReturnAfterPopupTick(goodsFinder)
     goodsFinder.autoReturnCloseTickCounter =
         (tonumber(goodsFinder.autoReturnCloseTickCounter) or 0) + 1
 
+    local closeTick =
+        tonumber(goodsFinder.autoReturnCloseTickCounter) or 0
+    local currentMacroProvince, currentMacroTab =
+        crossProvinceReadMapState()
+    local popupProvince =
+        tonumber(goodsFinder.crossProvincePopupProvince) or 0
+    local popupTab =
+        tonumber(goodsFinder.crossProvincePopupTab)
+    if popupTab == nil then popupTab = -1 end
+
+    -- Native province-tab clicks close the Load Good popup before Anno always
+    -- publishes the new MacroMap province/tab values. The old implementation
+    -- decided immediately and could therefore misclassify a real province
+    -- switch as Escape. Wait up to three Tick cycles for the native tab state.
+    local provinceChanged =
+        (popupProvince > 0
+            and currentMacroProvince > 0
+            and currentMacroProvince ~= popupProvince)
+        or (popupTab >= 0
+            and currentMacroTab >= 0
+            and currentMacroTab ~= popupTab)
+
+    local graceTicks = 3
+    if provinceChanged ~= true and closeTick < graceTicks then
+        if goodsFinder.autoReturnCloseGraceLogged ~= true then
+            goodsFinder.autoReturnCloseGraceLogged = true
+            log("CROSSPROVINCE CLOSE GRACE START"
+                .. " | popupProvince=" .. tostring(popupProvince)
+                .. " | popupTab=" .. tostring(popupTab)
+                .. " | currentMacroProvince=" .. tostring(currentMacroProvince)
+                .. " | currentMacroTab=" .. tostring(currentMacroTab)
+                .. " | closeTick=" .. tostring(closeTick)
+                .. " | graceTicks=" .. tostring(graceTicks)
+                .. " | reason=native tab update may lag popup close"
+                .. " | action=wait before deciding Escape vs province switch")
+        else
+            log("CROSSPROVINCE CLOSE GRACE WAIT"
+                .. " | popupProvince=" .. tostring(popupProvince)
+                .. " | popupTab=" .. tostring(popupTab)
+                .. " | currentMacroProvince=" .. tostring(currentMacroProvince)
+                .. " | currentMacroTab=" .. tostring(currentMacroTab)
+                .. " | closeTick=" .. tostring(closeTick)
+                .. " | graceTicks=" .. tostring(graceTicks))
+        end
+        return
+    end
+
     log("AUTORETURN POPUP CLOSED"
         .. " | popupVisible=false"
         .. " | routeValid=true"
-        .. " | action=remove temporary product from tracked empty row, verify restoration, then close parent Trade Route view"
-        .. " | deliberateFrameDelay=false")
+        .. " | popupProvince=" .. tostring(popupProvince)
+        .. " | popupTab=" .. tostring(popupTab)
+        .. " | currentMacroProvince="
+            .. tostring(currentMacroProvince)
+        .. " | currentMacroTab="
+            .. tostring(currentMacroTab)
+        .. " | closeTick=" .. tostring(closeTick)
+        .. " | graceTicks=" .. tostring(graceTicks)
+        .. " | provinceChanged="
+            .. tostring(provinceChanged)
+        .. " | action="
+            .. tostring(provinceChanged
+                and "clean old doorway but keep Trade Route open and reopen Goods Finder in selected province"
+                or "grace expired with no tab change; treat as Escape, restore doorway, then close Trade Route")
+        .. " | deliberateFrameDelay=true")
 
     goodsFinder.nativeClosePrecloseSignature =
         nativeCloseHelperRowsSnapshot(goodsFinder, "preclose")
@@ -11575,7 +11981,89 @@ local function autoReturnAfterPopupTick(goodsFinder)
         .. " | baselineEqualsPreclose="
             .. tostring(goodsFinder.nativeCloseBaselineSignature == goodsFinder.nativeClosePrecloseSignature)
         .. " | baselineEqualsPostremove=" .. tostring(routeRestored)
-        .. " | next=native close")
+        .. " | next=" .. tostring(provinceChanged
+            and "cross-province reopen"
+            or "native close"))
+
+    if provinceChanged then
+        local targetIcon, targetLabel =
+            crossProvinceTargetForProvince(
+                currentMacroProvince
+            )
+
+        if targetIcon ~= nil then
+            local oldRouteID =
+                tonumber(goodsFinder.existingRouteCurrentId)
+            local oldRouteName =
+                tostring(goodsFinder.existingRouteCurrentName or "")
+            local oldStationIndex =
+                tonumber(goodsFinder.existingRouteHelperStationIndex)
+            local oldStationName =
+                tostring(goodsFinder.existingRouteHelperStationName or "")
+
+            goodsFinder.autoReturnPending = false
+            goodsFinder.autoReturnSawPopup = false
+            goodsFinder.autoReturnTickCounter = 0
+            goodsFinder.autoReturnCloseTickCounter = 0
+            goodsFinder.autoReturnCloseGraceLogged = false
+            goodsFinder.autoReturnLogged = false
+
+            crossProvinceResetDoorwayTracking(
+                goodsFinder
+            )
+
+            goodsFinder.crossProvinceTargetProvince =
+                currentMacroProvince
+            goodsFinder.crossProvinceTargetTab =
+                currentMacroTab
+            goodsFinder.crossProvinceReferenceLabel =
+                targetLabel
+
+            goodsFinder.sameDoorwayRouteID =
+                oldRouteID
+            goodsFinder.sameDoorwayRouteName =
+                oldRouteName
+            goodsFinder.sameDoorwayStationIndex =
+                oldStationIndex
+            goodsFinder.sameDoorwayStationName =
+                oldStationName
+            goodsFinder.sameDoorwayReopenPending = true
+            goodsFinder.sameDoorwayReopenTick = 0
+
+            log("CROSSPROVINCE SAME DOORWAY ARM"
+                .. " | fromProvince="
+                    .. tostring(popupProvince)
+                .. " | toProvince="
+                    .. tostring(currentMacroProvince)
+                .. " | toTab="
+                    .. tostring(currentMacroTab)
+                .. " | targetLabel="
+                    .. tostring(targetLabel)
+                .. " | oldRouteID="
+                    .. tostring(oldRouteID or "")
+                .. " | oldRouteName="
+                    .. tostring(oldRouteName)
+                .. " | oldStationIndex="
+                    .. tostring(oldStationIndex or "")
+                .. " | oldStationName="
+                    .. tostring(oldStationName)
+                .. " | oldDoorwayCleanupSuccess="
+                    .. tostring(removeErr == nil)
+                .. " | oldRouteRestored="
+                    .. tostring(routeRestored)
+                .. " | nativeTradeRouteCloseSuppressed=true"
+                .. " | strategy=reinvoke same AddGood doorway after native tab settles"
+                .. " | hardcodedRoute=false"
+                .. " | routeSwitch=false"
+                .. " | stationSwitch=false")
+            return
+        end
+
+        log("CROSSPROVINCE SWITCH UNSUPPORTED"
+            .. " | toProvince="
+                .. tostring(currentMacroProvince)
+            .. " | fallback=normal native close")
+    end
 
     log("NATIVECLOSE PREPARE"
         .. " | routeID=" .. tostring(goodsFinder.existingRouteCurrentId or "")
@@ -11631,8 +12119,124 @@ local function autoReturnAfterPopupTick(goodsFinder)
 end
 
 
+
+
+local function sameDoorwayAutoReopenTick(goodsFinder)
+    goodsFinder.sameDoorwayReopenTick =
+        (tonumber(goodsFinder.sameDoorwayReopenTick) or 0) + 1
+
+    local tickCount =
+        tonumber(goodsFinder.sameDoorwayReopenTick) or 0
+
+    -- Give the native Latium/Albion tab one full UI update after the popup
+    -- closes and after the old tracked doorway row has been restored.
+    if tickCount < 2 then
+        return
+    end
+
+    local routeValid = safe(function()
+        return TradeRoute
+            and TradeRoute.UIEditRoute
+            and TradeRoute.UIEditRoute:isValid()
+    end) == true
+
+    local popupVisible = safe(function()
+        return ui
+            and ui.Scenes
+            and ui.Scenes.TradeRoute
+            and ui.Scenes.TradeRoute.TradeGoodSelection
+            and ui.Scenes.TradeRoute.TradeGoodSelection.PopupData
+            and ui.Scenes.TradeRoute.TradeGoodSelection.PopupData.IsVisible
+    end) == true
+
+    local currentProvince, currentTab =
+        crossProvinceReadMapState()
+
+    log("SAMEDOORWAY REOPEN WAIT"
+        .. " | tick=" .. tostring(tickCount)
+        .. " | routeValid=" .. tostring(routeValid)
+        .. " | popupVisible=" .. tostring(popupVisible)
+        .. " | selectedProvince=" .. tostring(currentProvince)
+        .. " | selectedTab=" .. tostring(currentTab)
+        .. " | routeID="
+            .. tostring(goodsFinder.sameDoorwayRouteID or "")
+        .. " | routeName="
+            .. tostring(goodsFinder.sameDoorwayRouteName or "")
+        .. " | helperStationIndex="
+            .. tostring(goodsFinder.sameDoorwayStationIndex or "")
+        .. " | helperStationName="
+            .. tostring(goodsFinder.sameDoorwayStationName or "")
+        .. " | strategy=reinvoke same LoadGoods.AddGood doorway"
+        .. " | hardcodedRoute=false"
+        .. " | noRouteSwitch=true")
+
+    if popupVisible == true then
+        goodsFinder.sameDoorwayReopenPending = false
+        goodsFinder.sameDoorwayReopenTick = 0
+        return
+    end
+
+    if routeValid ~= true then
+        if tickCount >= 8 then
+            log("SAMEDOORWAY REOPEN ABORT"
+                .. " | reason=route no longer valid"
+                .. " | noFallbackRoute=true")
+            goodsFinder.sameDoorwayReopenPending = false
+            goodsFinder.sameDoorwayReopenTick = 0
+        end
+        return
+    end
+
+    -- Restore the exact same helper station that was used before the native
+    -- province switch. Test 8 proved the user's successful manual reopen did
+    -- not change route/station/focus; only PopupData.IsVisible changed.
+    goodsFinder.existingRouteCurrentId =
+        tonumber(goodsFinder.sameDoorwayRouteID)
+    goodsFinder.existingRouteCurrentName =
+        tostring(goodsFinder.sameDoorwayRouteName or "")
+    goodsFinder.existingRouteHelperStationIndex =
+        tonumber(goodsFinder.sameDoorwayStationIndex)
+    goodsFinder.existingRouteHelperStationName =
+        tostring(goodsFinder.sameDoorwayStationName or "")
+
+    -- Do NOT apply StationProvinceIcon filtering here. The manual capture
+    -- proved that the same Latium station doorway can reopen the popup while
+    -- the MacroMap is on Albion. The popup's content follows the selected
+    -- native province/tab, not the station icon of this doorway.
+    goodsFinder.crossProvinceTargetStationIcon = nil
+
+    local result, openErr = safe(function()
+        return goodsFinder:OpenRememberedLoadGoodsPopup()
+    end)
+
+    log("SAMEDOORWAY REOPEN DISPATCH"
+        .. " | tick=" .. tostring(tickCount)
+        .. " | selectedProvince=" .. tostring(currentProvince)
+        .. " | selectedTab=" .. tostring(currentTab)
+        .. " | routeID="
+            .. tostring(goodsFinder.sameDoorwayRouteID or "")
+        .. " | routeName="
+            .. tostring(goodsFinder.sameDoorwayRouteName or "")
+        .. " | helperStationIndex="
+            .. tostring(goodsFinder.sameDoorwayStationIndex or "")
+        .. " | helperStationName="
+            .. tostring(goodsFinder.sameDoorwayStationName or "")
+        .. " | success="
+            .. tostring(openErr == nil and result == true)
+        .. " | result=" .. tostring(result)
+        .. " | error=" .. tostring(openErr or "")
+        .. " | routeSwitch=false"
+        .. " | stationSwitch=false"
+        .. " | expected=native goods popup reopens for selected MacroMap province")
+
+    goodsFinder.sameDoorwayReopenPending = false
+    goodsFinder.sameDoorwayReopenTick = 0
+end
+
+
 function GoodsFinder:Tick()
-    if self.existingRouteScanPending ~= true
+    if self.sameDoorwayReopenPending ~= true
+        and self.existingRouteScanPending ~= true
         and self.nativeClickProbePending ~= true
         and self.autoShipListWaitPending ~= true
         and self.autoShipSelectionPending ~= true
@@ -11640,6 +12244,11 @@ function GoodsFinder:Tick()
         and self.autoReturnPending ~= true
         and self.nativeCloseVerifyPending ~= true
         and self.failureCleanupPending ~= true then
+        return
+    end
+
+    if self.sameDoorwayReopenPending == true then
+        sameDoorwayAutoReopenTick(self)
         return
     end
 
@@ -11815,21 +12424,34 @@ function GoodsFinder:Tick()
         end
 
         if popupVisible == true then
-            log("AUTOHOVER READY"
-                .. " | tickCount=" .. tostring(hoverTickCount)
-                .. " | popupVisible=true"
-                .. " | action=ForceRememberedGoodHover")
+            local rememberedGuid = tonumber(self.lastProductGuid) or 0
+            local hoverResult = true
+            local hoverErr = nil
 
-            local hoverResult, hoverErr = safe(function()
-                return self:ForceRememberedGoodHover()
-            end)
+            if rememberedGuid > 0 then
+                log("AUTOHOVER READY"
+                    .. " | tickCount=" .. tostring(hoverTickCount)
+                    .. " | popupVisible=true"
+                    .. " | preselection=true"
+                    .. " | action=ForceRememberedGoodHover")
 
-            log("AUTOHOVER COMPLETE"
-                .. " | success=" .. tostring(hoverErr == nil and hoverResult == true)
-                .. " | result=" .. tostring(hoverResult)
-                .. " | error=" .. tostring(hoverErr or "")
-                .. " | productGUID=" .. tostring(self.lastProductGuid or 0)
-                .. " | productName=" .. tostring(self.lastProductName or ""))
+                hoverResult, hoverErr = safe(function()
+                    return self:ForceRememberedGoodHover()
+                end)
+
+                log("AUTOHOVER COMPLETE"
+                    .. " | success=" .. tostring(hoverErr == nil and hoverResult == true)
+                    .. " | result=" .. tostring(hoverResult)
+                    .. " | error=" .. tostring(hoverErr or "")
+                    .. " | productGUID=" .. tostring(self.lastProductGuid or 0)
+                    .. " | productName=" .. tostring(self.lastProductName or ""))
+            else
+                log("WAREHOUSEMODE POPUP READY"
+                    .. " | tickCount=" .. tostring(hoverTickCount)
+                    .. " | popupVisible=true"
+                    .. " | preselection=false"
+                    .. " | behavior=user may hover any product; warehouse is not required")
+            end
 
             self.autoGoodsHoverPending = false
             self.autoGoodsHoverTickCounter = 0

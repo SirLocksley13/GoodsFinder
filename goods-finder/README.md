@@ -1,80 +1,111 @@
-# Goods Finder v1.0.0
+# Goods Finder v1.1.0
 
-## Plain-English summary
+## What it does
 
-Hover over a product in a warehouse and press **Ctrl+Alt+G**. Goods Finder opens Anno 117's normal goods list, highlights the product, and shows how much is stored on every owned island in the current province.
+**Goods Finder** gives you fast access to Anno 117's native province-wide goods view.
 
-You can hover other products to compare them. When you press **Escape**, Goods Finder removes its temporary trade-route entry and returns to the warehouse without changing existing cargo instructions.
+Press **Ctrl+Alt+G** from normal gameplay. You no longer need to open a warehouse first.
 
-## Features
+- If no valid product is hovered, Goods Finder opens the full native goods list.
+- If you are in a warehouse and hover a valid good, that good is preselected when possible.
+- You can use Anno's native **Latium / Albion** tabs while Goods Finder is open.
+- After a province switch, Goods Finder automatically reopens the goods list in the selected province.
 
-- Opens from a warehouse with **Ctrl+Alt+G**.
-- Automatically focuses the product under the mouse.
-- Uses the vanilla province-wide island stock display.
-- Keeps the goods list fully visible and interactive.
-- Lets you hover or click other products while comparing stock.
-- Protects all existing occupied cargo rows.
-- Removes the temporary product entry before closing.
-- Works with existing savegames.
-- Requires no Ship Finder installation and has no other mod dependency.
+The mod uses Anno's own goods window rather than replacing it with a custom stock screen.
+
+## Shortcut
+
+**Ctrl+Alt+G**
 
 ## How to use
 
-1. Open any warehouse.
-2. Hover over the product you want to inspect.
+1. Press **Ctrl+Alt+G** from normal gameplay.
+2. Browse or hover goods in the native goods list.
+3. Use the native **Latium / Albion** tabs if you want to view the other province.
+4. Goods Finder automatically reopens the goods list after the province switch.
+5. Press **Escape** to leave.
+
+Optional warehouse workflow:
+
+1. Open a warehouse.
+2. Hover a good.
 3. Press **Ctrl+Alt+G**.
-4. Hover other products to compare their province-wide stock.
-5. Press **Escape once** to close Goods Finder and return to the warehouse.
+4. Goods Finder opens the same native goods list and preselects the hovered good when available.
 
-## Safety
+## v1.1.0 highlights
 
-Goods Finder uses an existing trade route only as a doorway to Anno 117's vanilla goods window.
+- **Ctrl+Alt+G works from normal gameplay**; a warehouse is no longer required.
+- Warehouse hover remains available as optional good preselection.
+- Added automatic **Latium / Albion** switching through Anno's native province tabs.
+- Province switching reuses the same safe native goods doorway; no hard-coded player route is required.
+- Added timing protection for the native province-tab transition.
+- Added hardened cleanup for cases where Anno starts closing the Trade Route editor before Goods Finder's normal exit monitor runs.
+- Added English, German and French mod metadata.
+- Patch 2 compatible.
 
-It accepts only a route that has:
+## Safety design
 
-- at least two stations;
-- a station in the current province;
-- an originally-empty usable **Load Good** row.
+Goods Finder uses an existing trade route only as a temporary doorway into Anno's native goods list.
 
-Occupied cargo instructions are never used. If no safe empty row is available, Goods Finder stops instead of changing an existing instruction.
+It will only use an **originally-empty usable Load Good row**. Existing occupied cargo instructions are not selected as the temporary doorway.
 
-## Intentional save question
+When the goods popup closes, Goods Finder attempts to remove its temporary doorway entry before leaving or before reopening after a province switch.
 
-If you make a real trade-route change while Goods Finder is open—such as adding or removing an island—the game will correctly ask whether you want to save that change.
+If Anno closes the Trade Route editor first, Goods Finder uses a guarded final cleanup path:
 
-This is intentional. Goods Finder automatically removes only its own temporary product entry; it does not silently undo deliberate route changes.
+- only the row originally confirmed empty may be touched;
+- cleanup runs at most once;
+- Goods Finder does not issue a duplicate Trade Route close;
+- Goods Finder does not use a delayed `PopUI`.
+
+## Browsing goods
+
+Hovering goods is the safest intended browsing workflow.
+
+If you click a good, Anno may temporarily configure that good on the helper row. Goods Finder calls the native `RemoveGood` cleanup before closing. Existing occupied cargo rows remain protected.
+
+## Compatibility
+
+- **Anno 117: Pax Romana**
+- **Patch 2**
+- Tested against build **2.0.1702353.294543**
+- Existing savegames supported
+- New game not required
+- No dependency on Ship Finder, Rename Manager, or Specialist Management
+
+## Languages
+
+The mod name remains **Goods Finder** in all languages.
+
+Public mod metadata is included in:
+
+- English
+- German
+- French
+
+The actual goods interface is Anno's native UI, so product names and native controls follow the language selected in the game.
 
 ## Installation
 
 ### Mod Browser
 
-Find **Goods Finder** in the Anno 117 Mod Browser and select **Install**.
+Install **Goods Finder** from the Anno 117 Mod Browser.
 
 ### Manual installation
 
-Extract the `goods-finder` folder into either:
+Extract the `goods-finder` folder into one of Anno 117's mod folders, for example:
 
-- `<Documents>/Anno 117 - Pax Romana/mods/`
-- `<Anno 117 installation folder>/mods/`
+`<Documents>/Anno 117 - Pax Romana/mods/`
 
-Remove older Goods Finder test builds before installing v1.0.0 to avoid duplicate **Ctrl+Alt+G** shortcuts.
+Remove older Goods Finder test builds first so that **Ctrl+Alt+G** is not registered more than once.
 
-## Compatibility
+## Known requirements
 
-- Anno 117: Pax Romana
-- Tested with game version **1.6.1.1680013**
-- Existing savegames supported
-- New game not required
-- Current province only
-- Safe to remove
+Goods Finder needs at least one existing trade route that provides a safe, originally-empty usable Load Good row for the native doorway.
 
-## Known limitations
-
-- At least one suitable existing trade route must be available in the current province.
-- A safe originally-empty Load Good row must exist.
-- Deliberate trade-route structure changes can trigger the normal save confirmation.
-- The mod does not create temporary routes or click islands automatically.
+If no safe row can be found, Goods Finder stops instead of reusing an occupied cargo instruction.
 
 ## Author
 
-**Developed by Dr. Enrico Handrick under the GitHub username SirLocksley13.**
+Developed by **Dr. Enrico Handrick**  
+GitHub: **SirLocksley13**

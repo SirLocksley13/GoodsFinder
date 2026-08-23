@@ -1,16 +1,20 @@
 {
   "ModID": "goods-finder-province-stock-map",
-  "Version": "1.0.0",
+  "Version": "1.1.0",
   "Anno": 8,
   "Difficulty": "unchanged",
   "ModName": {
-    "English": "Goods Finder"
+    "English": "Goods Finder",
+    "German": "Goods Finder",
+    "French": "Goods Finder"
   },
   "Category": {
     "English": "Utility"
   },
   "Description": {
-    "English": "Press Ctrl+Alt+G while hovering a warehouse product to open the vanilla goods list, focus that product, and compare its stock across all owned islands in the current province. Goods Finder uses only an originally-empty trade-route cargo row and removes temporary product selections before closing, protecting existing cargo instructions."
+    "English": "Press Ctrl+Alt+G from normal gameplay to open Anno 117's native goods list and compare stock across your islands. A hovered warehouse good is preselected when available. Switch between Latium and Albion with the native province tabs and Goods Finder automatically reopens the goods list in the selected province. Existing occupied trade-route cargo rows are protected.",
+    "German": "Druecke Ctrl+Alt+G direkt im normalen Spiel, um Anno 117s native Warenliste zu oeffnen und Bestaende auf deinen Inseln zu vergleichen. Eine im Warenhaus markierte Ware wird wenn moeglich vorselektiert. Wechsle mit den nativen Provinz-Tabs zwischen Latium und Albion; Goods Finder oeffnet die Warenliste automatisch in der gewaehlten Provinz erneut. Belegte Warenzeilen bestehender Handelsrouten werden geschuetzt.",
+    "French": "Appuyez sur Ctrl+Alt+G directement en jeu pour ouvrir la liste native des marchandises d'Anno 117 et comparer les stocks de vos iles. Une marchandise survolee dans un entrepot est preselectionnee si possible. Utilisez les onglets natifs pour passer de Latium a Albion; Goods Finder rouvre automatiquement la liste dans la province choisie. Les lignes de cargaison deja utilisees des routes commerciales sont protegees."
   },
   "CreatorName": "Dr. Enrico Handrick",
   "CreatorContact": "https://github.com/SirLocksley13",
