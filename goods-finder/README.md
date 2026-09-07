@@ -1,4 +1,4 @@
-# Goods Finder v1.1.0
+# Goods Finder v1.1.1
 
 ## What it does
 
@@ -15,7 +15,9 @@ The mod uses Anno's own goods window rather than replacing it with a custom stoc
 
 ## Shortcut
 
-**Ctrl+Alt+G**
+Default: **Ctrl+Alt+G**
+
+The Goods Finder shortcut is configurable in Anno 117 under **Settings -> Controls**. The permanent Goods Finder shortcut identity and command are preserved so future default-key changes do not silently replace the control entry.
 
 ## How to use
 
@@ -31,6 +33,14 @@ Optional warehouse workflow:
 2. Hover a good.
 3. Press **Ctrl+Alt+G**.
 4. Goods Finder opens the same native goods list and preselects the hovered good when available.
+
+## v1.1.1 highlights
+
+- Added native configurable shortcut support in **Settings -> Controls**.
+- Default shortcut remains **Ctrl+Alt+G**.
+- Preserved the existing shortcut command `GoodsFinder:CaptureOpenAndCreateRoute()`.
+- Preserved the existing shortcut identifier `GoodsFinderProvinceStockMap`.
+- No Goods Finder Lua/runtime behavior was changed in this maintenance candidate.
 
 ## v1.1.0 highlights
 
