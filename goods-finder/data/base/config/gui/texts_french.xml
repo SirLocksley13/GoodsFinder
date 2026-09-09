@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ModOps>
+  <ModOp Add="/TextExport/Texts[1]">
+    <Text>
+      <Text>Goods Finder - Ouvrir</Text>
+      <LineId>2019730021</LineId>
+    </Text>
+  </ModOp>
+</ModOps>
