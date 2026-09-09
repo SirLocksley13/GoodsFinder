@@ -2,6 +2,7 @@
   <ModOp Type="add" GUID="2001271" Path="/Values/ShortcutConfig/InputBindings">
     <Item>
       <Command>GoodsFinder:CaptureOpenAndCreateRoute()</Command>
+      <Text>2019730021</Text>
       <Active>Session</Active>
       <Configurable>1</Configurable>
       <Identifier>GoodsFinderProvinceStockMap</Identifier>
