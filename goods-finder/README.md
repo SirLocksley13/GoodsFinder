@@ -37,10 +37,11 @@ Optional warehouse workflow:
 ## v1.1.1 highlights
 
 - Added native configurable shortcut support in **Settings -> Controls**.
+- Added localized Controls label: **Goods Finder - Open**.
 - Default shortcut remains **Ctrl+Alt+G**.
 - Preserved the existing shortcut command `GoodsFinder:CaptureOpenAndCreateRoute()`.
 - Preserved the existing shortcut identifier `GoodsFinderProvinceStockMap`.
-- No Goods Finder Lua/runtime behavior was changed in this maintenance candidate.
+- No Goods Finder functional Lua behavior was changed in this controls maintenance release.
 
 ## v1.1.0 highlights
 
@@ -68,6 +69,8 @@ If Anno closes the Trade Route editor first, Goods Finder uses a guarded final c
 - Goods Finder does not issue a duplicate Trade Route close;
 - Goods Finder does not use a delayed `PopUI`.
 
+During v1.1.1 testing, the temporary native doorway could involve a ship that is not owned by the player. This is accepted behavior for this release. The safety criterion remains that existing occupied cargo instructions are protected and Goods Finder removes its own temporary selection.
+
 ## Browsing goods
 
 Hovering goods is the safest intended browsing workflow.
@@ -87,7 +90,7 @@ If you click a good, Anno may temporarily configure that good on the helper row.
 
 The mod name remains **Goods Finder** in all languages.
 
-Public mod metadata is included in:
+Public mod metadata and Controls labels are included in:
 
 - English
 - German
