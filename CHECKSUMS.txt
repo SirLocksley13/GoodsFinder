@@ -1,5 +1,5 @@
-SHA256  a4e8c376edd083ab304a9da39a4990d8dc035f1c1933bef5d63a8831328c8af0  release/GoodsFinder_v1.0.0.zip
-MD5     ccca7ac6b861a291843ab47563d47aed  release/GoodsFinder_v1.0.0.zip
+SHA256  acdffddfb29c5e84d81ff085bf570cc60a94d3e2a77e8adb395772c25f861309  release/GoodsFinder_v1.1.1.zip
+MD5     c79ac55a69b6978cc8a9995ea3701d10  release/GoodsFinder_v1.1.1.zip
 SHA256  7270a7e4e2d01cbeda988baab64c5561bd12f3bd7138145ee7798e9287015fb4  media/GoodsFinder_Modio_Logo_1280x720.png
 MD5     ea2f7f06f0a78a84b1e053447ec753f7  media/GoodsFinder_Modio_Logo_1280x720.png
 SHA256  3cc4676ee9f01422a4284686b901eef2f0c19c71a90e6c1f48ea09c6627200b1  media/GoodsFinder_How_To_Use_1280x720.png
